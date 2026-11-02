@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard de Cobranzas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #F3F5F7; --card: #FFFFFF; --ink: #1E2731; --muted: #5B6773; --line: #DCE2E8;
+  --slate: #2B3846; --steel: #5E7488; --ok: #2E7D5B; --warn: #B7791F; --bad: #B03A2E;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #12171D; --card: #1A2129; --ink: #E4E9EE; --muted: #9AA6B2; --line: #2C3641;
+          --slate: #93A9BD; --steel: #93A9BD; --ok: #5DBB8F; --warn: #E0A84A; --bad: #E07A6E; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14.5px/1.55 "Montserrat", Arial, sans-serif; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 28px 16px 48px; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 8px 24px; margin-bottom: 20px; }
+h1 { margin: 0; font-size: 26px; font-weight: 700; }
+.sub { color: var(--muted); margin: 4px 0 0; }
+.corte { color: var(--muted); font-size: 13px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.kpi span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.kpi b { display: block; font-size: 22px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.kpi small { color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; min-width: 0; }
+.card h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.card.full { grid-column: 1 / -1; }
+.chart { position: relative; height: 260px; }
+ul.hall { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.tabla { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+td.num, th.num { text-align: right; }
+.pill { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; }
+footer { margin-top: 24px; color: var(--muted); font-size: 12.5px; }
+footer a { color: var(--steel); }
+@media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Dashboard de Cobranzas</h1>
+      <p class="sub">Efectividad de cobro, morosidad y antigüedad de la deuda</p>
+    </div>
+    <div class="corte" id="corte"></div>
+  </header>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="grid">
+    <div class="card full">
+      <h2>Hallazgos principales</h2>
+      <ul class="hall" id="hallazgos"></ul>
+    </div>
+    <div class="card full">
+      <h2>Facturado vs. cobrado por mes <small style="font-weight:400;color:var(--muted)">(meses con facturas ya vencidas)</small></h2>
+      <div class="chart"><canvas id="cEvol"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Saldo pendiente por antigüedad</h2>
+      <div class="chart"><canvas id="cAging"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Morosidad por segmento</h2>
+      <div class="chart"><canvas id="cSeg"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Días promedio de pago respecto al vencimiento</h2>
+      <div class="chart"><canvas id="cDias"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Cobrado por medio de pago</h2>
+      <div class="chart"><canvas id="cMedios"></canvas></div>
+    </div>
+    <div class="card full">
+      <h2>Clientes con mayor saldo vencido</h2>
+      <div class="tabla"><table id="tTop"></table></div>
+    </div>
+  </section>
+
+  <footer>
+    Datos simulados con fines de demostración. Proyecto de
+    <a href="https://github.com/milagroshuppi" target="_blank" rel="noopener">María Milagros Huppi Falco</a> ·
+    <a href="https://github.com/milagroshuppi/dashboard-cobranzas" target="_blank" rel="noopener">Código fuente</a>
+  </footer>
+</div>
+
+<script>
+const D = /*__DATOS__*/null;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const ars = n => '$ ' + Math.round(n).toLocaleString('es-AR');
+const mill = n => '$ ' + (n / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' M';
+
+document.getElementById('corte').textContent = 'Fecha de corte: ' + D.hoy.split('-').reverse().join('/');
+
+const kpis = [
+  ['Facturado', mill(D.facturado), '12 meses'],
+  ['Cobrado', mill(D.cobrado), D.efectividad + '% del facturado'],
+  ['Saldo vencido', mill(D.saldo_vencido), 'Morosidad ' + D.morosidad + '%'],
+  ['DSO', D.dso + ' días', 'Días promedio de cobro'],
+  ['Pagos en término', D.pct_en_termino + '%', 'Antes o al vencimiento'],
+];
+document.getElementById('kpis').innerHTML = kpis.map(([t, v, s]) =>
+  `<div class="kpi"><span>${t}</span><b>${v}</b><small>${s}</small></div>`).join('');
+
+document.getElementById('hallazgos').innerHTML = D.hallazgos.map(h => `<li>${h}</li>`).join('');
+
+Chart.defaults.font.family = 'Montserrat, Arial, sans-serif';
+Chart.defaults.color = css('--muted');
+Chart.defaults.borderColor = css('--line');
+const base = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } };
+
+new Chart(document.getElementById('cEvol'), {
+  type: 'bar',
+  data: {
+    labels: D.evolucion.map(e => e.mes),
+    datasets: [
+      { label: 'Facturado', data: D.evolucion.map(e => e.facturado), backgroundColor: css('--line') },
+      { label: 'Cobrado', data: D.evolucion.map(e => e.cobrado), backgroundColor: css('--slate') },
+      { label: 'Efectividad %', data: D.evolucion.map(e => e.efectividad), type: 'line', yAxisID: 'y2',
+        borderColor: css('--warn'), backgroundColor: css('--warn'), tension: .3 },
+    ],
+  },
+  options: { ...base, scales: {
+    y: { ticks: { callback: v => mill(v) } },
+    y2: { position: 'right', min: 0, max: 110, grid: { display: false }, ticks: { callback: v => v + '%' } },
+  } },
+});
+
+const colTramo = [css('--ok'), css('--steel'), css('--warn'), css('--bad'), css('--bad')];
+new Chart(document.getElementById('cAging'), {
+  type: 'bar',
+  data: { labels: D.aging.map(a => a.tramo), datasets: [{ data: D.aging.map(a => a.saldo), backgroundColor: colTramo }] },
+  options: { ...base, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => mill(v) } } } },
+});
+
+new Chart(document.getElementById('cSeg'), {
+  type: 'bar',
+  data: { labels: D.segmentos.map(s => s.segmento), datasets: [{ label: 'Morosidad %', data: D.segmentos.map(s => s.morosidad), backgroundColor: css('--bad') }] },
+  options: { ...base, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => v + '%' } } } },
+});
+
+new Chart(document.getElementById('cDias'), {
+  type: 'bar',
+  data: { labels: D.dias_por_segmento.map(s => s.segmento), datasets: [{ data: D.dias_por_segmento.map(s => s.dias), backgroundColor: css('--steel') }] },
+  options: { ...base, plugins: { legend: { display: false } }, scales: { y: { title: { display: true, text: 'días' } } } },
+});
+
+new Chart(document.getElementById('cMedios'), {
+  type: 'doughnut',
+  data: { labels: D.medios.map(m => m.medio), datasets: [{ data: D.medios.map(m => m.monto),
+    backgroundColor: [css('--slate'), css('--steel'), css('--warn'), css('--line')] }] },
+  options: { ...base, cutout: '60%' },
+});
+
+document.getElementById('tTop').innerHTML =
+  '<tr><th>Cliente</th><th>Segmento</th><th>Provincia</th><th class="num">Facturas vencidas</th><th class="num">Saldo vencido</th><th class="num">Máx. atraso</th></tr>' +
+  D.top_deudores.map(t => `<tr><td>${t.nombre}</td><td>${t.segmento}</td><td>${t.provincia}</td>
+    <td class="num">${t.facturas_vencidas}</td><td class="num">${ars(t.saldo_vencido)}</td>
+    <td class="num"><span class="pill" style="background:${t.dias_max_atraso > 90 ? css('--bad') : css('--warn')}">${t.dias_max_atraso} días</span></td></tr>`).join('');
+</script>
+</body>
+</html>
